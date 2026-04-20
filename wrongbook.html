@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>统计学总错题本</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>统计学总错题本</h1>
+        <p>第1-5章所有做错过的题都会集中到这里。记录保存在当前浏览器中，刷新后仍可读取。</p>
+        <div class="meta">
+          <span class="pill">按章筛选</span>
+          <span class="pill">搜索错题</span>
+          <span class="pill">逐题移除</span>
+        </div>
+      </div>
+      <div class="hero-image"></div>
+    </section>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel toolbar">
+          <label>
+            <div class="muted" style="margin-bottom:8px;">按章节筛选</div>
+            <select id="chapterFilter"></select>
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom:8px;">搜索题目</div>
+            <input id="searchInput" type="text" placeholder="输入关键词，例如：环比 / 标准差 / 总指数" />
+          </label>
+          <button id="clearBtn" class="btn secondary">清空当前浏览器全部错题</button>
+        </section>
+        <section class="panel">
+          <h2>错题数量</h2>
+          <span class="count" id="wrongCountText">0</span>
+          <p>只统计当前浏览器保存的错题。</p>
+        </section>
+        <section class="panel">
+          <h2>页面跳转</h2>
+          <div class="btn-row">
+            <a class="btn secondary" href="./index.html">返回首页</a>
+            <a class="btn secondary" href="./quiz.html">打开题库</a>
+          </div>
+        </section>
+      </aside>
+      <section class="main">
+        <section id="wrongList" class="question-list"></section>
+      </section>
+    </div>
+  </main>
+
+  <script src="./stats_data.js"></script>
+  <script>
+    const data = window.statsReviewData;
+    const WRONG_KEY = "statsReviewWrongBook";
+    const chapterFilter = document.getElementById("chapterFilter");
+    const searchInput = document.getElementById("searchInput");
+    const wrongList = document.getElementById("wrongList");
+    const wrongCountText = document.getElementById("wrongCountText");
+    const questionMap = {};
+
+    data.chapters.forEach(chapter => {
+      (data.questions[chapter.id] || []).forEach(question => {
+        questionMap[`${chapter.id}:${question.id}`] = { chapter, question };
+      });
+    });
+
+    function escapeHtml(text) {
+      return String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    }
+
+    function loadWrongBook() {
+      try {
+        return JSON.parse(localStorage.getItem(WRONG_KEY) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function saveWrongBook(book) {
+      localStorage.setItem(WRONG_KEY, JSON.stringify(book));
+    }
+
+    function formatCorrectAnswer(question) {
+      if (!question) return "题库里已找不到这道题。";
+      if (question.type === "single" || question.type === "judge") {
+        return `${String.fromCharCode(65 + question.answer)}. ${question.options[question.answer]}`;
+      }
+      if (question.type === "fill") return question.blanks.join(" / ");
+      return "";
+    }
+
+    function renderFilters() {
+      chapterFilter.innerHTML = `<option value="全部">全部</option>` + data.chapters.map(chapter => `<option value="${chapter.id}">${escapeHtml(chapter.title)}</option>`).join("");
+    }
+
+    function getVisibleItems() {
+      const wrongBook = loadWrongBook();
+      const keyword = searchInput.value.trim().toLowerCase();
+      return Object.values(wrongBook)
+        .filter(record => chapterFilter.value === "全部" || record.chapterId === chapterFilter.value)
+        .map(record => ({ record, source: questionMap[record.key] }))
+        .filter(({ record, source }) => {
+          const question = source?.question;
+          const chapter = source?.chapter;
+          const text = [
+            record.question,
+            record.point,
+            record.chapterTitle,
+            chapter?.title,
+            question?.explanation,
+            question?.thinking
+          ].join(" ").toLowerCase();
+          return !keyword || text.includes(keyword);
+        })
+        .sort((a, b) => (b.record.lastWrongAt || "").localeCompare(a.record.lastWrongAt || ""));
+    }
+
+    function render() {
+      const book = loadWrongBook();
+      const items = getVisibleItems();
+      wrongCountText.textContent = Object.keys(book).length;
+      wrongList.innerHTML = "";
+      if (!items.length) {
+        wrongList.innerHTML = `<section class="empty">当前没有符合条件的错题。先去题库做题，答错后会自动出现在这里。</section>`;
+        return;
+      }
+      items.forEach(({ record, source }) => {
+        const question = source?.question;
+        const chapter = source?.chapter;
+        const item = document.createElement("article");
+        item.className = "item";
+        item.innerHTML = `
+          <div class="question-head">
+            <span class="tag">${escapeHtml(chapter?.title || record.chapterTitle || record.chapterId)}</span>
+            <span class="pill">${escapeHtml(question?.point || record.point || "未分类")}</span>
+            <span class="muted">累计错了 ${record.wrongCount} 次</span>
+            <span class="muted">最近一次：${escapeHtml(record.lastWrongAtText || record.lastWrongAt || "未知时间")}</span>
+          </div>
+          <h2 class="question-title">${escapeHtml(question?.question || record.question || "题目已丢失")}</h2>
+          <div class="block user"><strong>你上次的答案：</strong>${escapeHtml(record.lastUserAnswer || "未记录")}</div>
+          <div class="block answer"><strong>正确答案：</strong>${escapeHtml(formatCorrectAnswer(question))}<br /><strong>解析：</strong>${escapeHtml(question?.explanation || "当前题库没有解析。")}</div>
+          <div class="block thinking"><strong>解题思路：</strong>${escapeHtml(question?.thinking || "暂无解题思路。")}</div>
+          <div class="item-actions">
+            <a class="btn" href="./quiz.html?chapter=${encodeURIComponent(record.chapterId)}">回到这章题库再做</a>
+            <button class="btn secondary" data-remove="${escapeHtml(record.key)}">从错题本移除</button>
+          </div>
+        `;
+        wrongList.appendChild(item);
+      });
+      wrongList.querySelectorAll("[data-remove]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const book = loadWrongBook();
+          delete book[btn.dataset.remove];
+          saveWrongBook(book);
+          render();
+        });
+      });
+    }
+
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      localStorage.removeItem(WRONG_KEY);
+      render();
+    });
+    chapterFilter.addEventListener("change", render);
+    searchInput.addEventListener("input", render);
+    renderFilters();
+    render();
+  </script>
+</body>
+</html>

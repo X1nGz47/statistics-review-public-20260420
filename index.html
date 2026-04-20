@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>统计学复习导航</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <div class="hero-copy">
+        <h1>统计学复习导航</h1>
+        <p>按第1-5章整理，重点看概念对比、图表判断、例题思路和易错点。每章都有展开卡片、章节例题和 25 道题库。</p>
+        <div class="meta">
+          <span class="pill">可点击展开卡片</span>
+          <span class="pill">每章 25 题</span>
+          <span class="pill">总错题本</span>
+          <span class="pill">PDF 下载</span>
+        </div>
+      </div>
+      <div class="hero-image" aria-label="统计图表背景图"></div>
+    </section>
+
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel">
+          <h2>推荐顺序</h2>
+          <ul class="list">
+            <li>第1章先理清变量、数据类型和计量尺度。</li>
+            <li>第2章练会数据整理和图表选择。</li>
+            <li>第3章重点比较均值、中位数、标准差和离散系数。</li>
+            <li>第4章分清时期/时点、定基/环比、发展/增长速度。</li>
+            <li>第5章用指数体系理解“价”和“量”的影响。</li>
+          </ul>
+        </section>
+        <section class="panel">
+          <h2>快速搜索</h2>
+          <input id="searchInput" type="text" placeholder="输入关键词，例如：中位数 / 环比 / 拉氏" />
+        </section>
+        <section class="panel">
+          <h2>错题入口</h2>
+          <p>所有章节做错的题都会集中到总错题本。</p>
+          <a class="btn" href="./wrongbook.html">打开总错题本</a>
+        </section>
+      </aside>
+
+      <section class="main">
+        <section class="section">
+          <h2 class="section-title">章节导航</h2>
+          <div id="chapterCards" class="cards"></div>
+        </section>
+        <section class="section">
+          <h2 class="section-title">课件 PDF 下载</h2>
+          <div id="pdfLinks" class="download-grid"></div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script src="./stats_data.js"></script>
+  <script>
+    const data = window.statsReviewData;
+    const chapterCards = document.getElementById("chapterCards");
+    const pdfLinks = document.getElementById("pdfLinks");
+    const searchInput = document.getElementById("searchInput");
+
+    function escapeHtml(text) {
+      return String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    }
+
+    function renderChapters() {
+      chapterCards.innerHTML = data.chapters.map(chapter => {
+        const count = data.questions[chapter.id]?.length || 0;
+        const search = [chapter.title, chapter.tag, chapter.summary, chapter.cards.map(card => card.keywords.join(" ")).join(" ")].join(" ");
+        return `
+          <article class="card" data-search="${escapeHtml(search)}">
+            <span class="tag">${escapeHtml(chapter.tag)}</span>
+            <h3>${escapeHtml(chapter.title)}</h3>
+            <p>${escapeHtml(chapter.summary)}</p>
+            <p>题库 ${count} 题 | 例题 ${chapter.examples.length} 道</p>
+            <div class="btn-row">
+              <a class="btn" href="./chapter.html?chapter=${chapter.id}">打开复习页</a>
+              <a class="btn secondary" href="./quiz.html?chapter=${chapter.id}">打开题库</a>
+            </div>
+          </article>
+        `;
+      }).join("");
+
+      pdfLinks.innerHTML = data.chapters.map(chapter => `
+        <a class="download-link" href="./${chapter.pdf}" download>
+          <strong>${escapeHtml(chapter.title)}</strong><br />
+          ${escapeHtml(chapter.source)}
+        </a>
+      `).join("");
+    }
+
+    function filterCards() {
+      const keyword = searchInput.value.trim().toLowerCase();
+      document.querySelectorAll("[data-search]").forEach(card => {
+        card.style.display = !keyword || card.dataset.search.toLowerCase().includes(keyword) ? "grid" : "none";
+      });
+    }
+
+    renderChapters();
+    searchInput.addEventListener("input", filterCards);
+  </script>
+</body>
+</html>

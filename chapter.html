@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>统计学章节复习</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="page">
+    <section id="hero" class="hero"></section>
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel">
+          <h2>本章路径</h2>
+          <ul id="routeList" class="list"></ul>
+        </section>
+        <section class="panel">
+          <h2>页面跳转</h2>
+          <div class="btn-row">
+            <a class="btn secondary" href="./index.html">返回首页</a>
+            <a id="quizLink" class="btn" href="#">打开题库</a>
+            <a class="btn secondary" href="./wrongbook.html">总错题本</a>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>课件</h2>
+          <a id="pdfLink" class="btn secondary" href="#" download>下载本章 PDF</a>
+        </section>
+      </aside>
+      <section class="main">
+        <section class="section">
+          <h2 class="section-title">展开复习卡片</h2>
+          <div id="cardList" class="expand-list"></div>
+        </section>
+        <section class="section">
+          <h2 class="section-title">本章例题</h2>
+          <div id="exampleList" class="expand-list"></div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script src="./stats_data.js"></script>
+  <script>
+    const data = window.statsReviewData;
+    const params = new URLSearchParams(window.location.search);
+    const chapterId = params.get("chapter") || "c1";
+    const chapter = data.chapters.find(item => item.id === chapterId);
+
+    function escapeHtml(text) {
+      return String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    }
+
+    function renderCompare(rows) {
+      if (!rows || !rows.length) return "";
+      return `
+        <table class="compare-table">
+          <thead><tr><th>概念</th><th>判断标准</th><th>例子</th></tr></thead>
+          <tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}</tbody>
+        </table>
+      `;
+    }
+
+    function renderCard(card, index) {
+      return `
+        <details class="expand-card">
+          <summary>
+            <div class="summary-line">
+              <strong>${index + 1}. ${escapeHtml(card.title)}</strong>
+              <span class="chevron">›</span>
+            </div>
+            <div class="meta">${card.keywords.map(keyword => `<span class="pill">${escapeHtml(keyword)}</span>`).join("")}</div>
+            <p class="muted">${escapeHtml(card.one)}</p>
+          </summary>
+          <div class="expand-body">
+            ${card.body.map(line => `<p>${escapeHtml(line)}</p>`).join("")}
+            ${renderCompare(card.compare)}
+            <div class="note-box"><strong>常见误区：</strong>${escapeHtml(card.traps.join("；"))}</div>
+            <p><strong>适用题型：</strong>${escapeHtml(card.applies)}</p>
+          </div>
+        </details>
+      `;
+    }
+
+    function renderExample(example, index) {
+      return `
+        <details class="expand-card">
+          <summary>
+            <div class="summary-line">
+              <strong>例题 ${index + 1}：${escapeHtml(example.title)}</strong>
+              <span class="chevron">›</span>
+            </div>
+            <div class="meta"><span class="pill">${escapeHtml(example.point)}</span></div>
+            <p class="muted">${escapeHtml(example.question)}</p>
+          </summary>
+          <div class="expand-body">
+            <p><strong>题目：</strong>${escapeHtml(example.question)}</p>
+            <p><strong>先判断考点：</strong>${escapeHtml(example.point)}</p>
+            <ul class="list">${example.steps.map(step => `<li>${escapeHtml(step)}</li>`).join("")}</ul>
+            <div class="block answer"><strong>正确答案：</strong>${escapeHtml(example.answer)}</div>
+            <div class="note-box"><strong>为什么容易错：</strong>${escapeHtml(example.mistake)}</div>
+          </div>
+        </details>
+      `;
+    }
+
+    if (!chapter) {
+      document.querySelector(".page").innerHTML = `<section class="empty">没有找到这一章。<br /><a class="btn" href="./index.html">返回首页</a></section>`;
+    } else {
+      document.title = `${chapter.title} - 统计学复习`;
+      document.getElementById("hero").innerHTML = `
+        <div class="hero-copy">
+          <h1>${escapeHtml(chapter.title)}</h1>
+          <p>${escapeHtml(chapter.summary)}</p>
+          <div class="meta">
+            <span class="pill">${escapeHtml(chapter.tag)}</span>
+            <span class="pill">展开卡片 ${chapter.cards.length} 张</span>
+            <span class="pill">本章例题 ${chapter.examples.length} 道</span>
+            <span class="pill">题库 ${data.questions[chapter.id].length} 题</span>
+          </div>
+        </div>
+        <div class="hero-image"></div>
+      `;
+      document.getElementById("routeList").innerHTML = chapter.route.map(item => `<li>${escapeHtml(item)}</li>`).join("");
+      document.getElementById("quizLink").href = `./quiz.html?chapter=${chapter.id}`;
+      document.getElementById("pdfLink").href = `./${chapter.pdf}`;
+      document.getElementById("cardList").innerHTML = chapter.cards.map(renderCard).join("");
+      document.getElementById("exampleList").innerHTML = chapter.examples.map(renderExample).join("");
+    }
+  </script>
+</body>
+</html>

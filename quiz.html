@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>统计学刷题页</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="page">
+    <section id="hero" class="hero"></section>
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel toolbar">
+          <label>
+            <div class="muted" style="margin-bottom:8px;">选择章节</div>
+            <select id="chapterSelect"></select>
+          </label>
+          <label>
+            <div class="muted" style="margin-bottom:8px;">按知识点筛选</div>
+            <select id="pointFilter"></select>
+          </label>
+          <button id="restartBtn" class="btn">重新开始本轮练习</button>
+          <button id="wrongOnlyBtn" class="btn secondary">只看已记录错题</button>
+        </section>
+        <section class="panel">
+          <h2>做题统计</h2>
+          <div class="stat-grid">
+            <div class="stat-box"><strong id="doneCount">0</strong><span>已作答</span></div>
+            <div class="stat-box"><strong id="correctCount">0</strong><span>答对</span></div>
+            <div class="stat-box"><strong id="wrongCount">0</strong><span>答错</span></div>
+            <div class="stat-box"><strong id="accuracyText">0%</strong><span>正确率</span></div>
+          </div>
+        </section>
+        <section class="panel">
+          <h2>页面跳转</h2>
+          <div class="btn-row">
+            <a class="btn secondary" href="./index.html">返回首页</a>
+            <a id="chapterLink" class="btn secondary" href="#">复习本章</a>
+            <a class="btn secondary" href="./wrongbook.html">总错题本</a>
+          </div>
+          <p>本章已记录 <strong id="chapterWrongText">0</strong> 道错题；全部章节共 <strong id="totalWrongText">0</strong> 道。</p>
+        </section>
+      </aside>
+      <section class="main">
+        <section id="questionList" class="question-list"></section>
+      </section>
+    </div>
+  </main>
+
+  <script src="./stats_data.js"></script>
+  <script>
+    const data = window.statsReviewData;
+    const params = new URLSearchParams(window.location.search);
+    let chapterId = params.get("chapter") || "c1";
+    let chapter = data.chapters.find(item => item.id === chapterId) || data.chapters[0];
+    chapterId = chapter.id;
+    let questionBank = data.questions[chapterId] || [];
+    const WRONG_KEY = "statsReviewWrongBook";
+    const state = {};
+    let showWrongOnly = false;
+    let wrongBook = loadWrongBook();
+
+    const chapterSelect = document.getElementById("chapterSelect");
+    const pointFilter = document.getElementById("pointFilter");
+    const questionList = document.getElementById("questionList");
+    const doneCount = document.getElementById("doneCount");
+    const correctCount = document.getElementById("correctCount");
+    const wrongCount = document.getElementById("wrongCount");
+    const accuracyText = document.getElementById("accuracyText");
+    const chapterWrongText = document.getElementById("chapterWrongText");
+    const totalWrongText = document.getElementById("totalWrongText");
+
+    function escapeHtml(text) {
+      return String(text).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+    }
+
+    function loadWrongBook() {
+      try {
+        return JSON.parse(localStorage.getItem(WRONG_KEY) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function saveWrongBook() {
+      localStorage.setItem(WRONG_KEY, JSON.stringify(wrongBook));
+      refreshWrongCounts();
+    }
+
+    function questionKey(question) {
+      return `${chapterId}:${question.id}`;
+    }
+
+    function refreshWrongCounts() {
+      chapterWrongText.textContent = questionBank.filter(question => wrongBook[questionKey(question)]).length;
+      totalWrongText.textContent = Object.keys(wrongBook).length;
+    }
+
+    function renderHero() {
+      document.title = `${chapter.title} - 题库`;
+      document.getElementById("hero").innerHTML = `
+        <div class="hero-copy">
+          <h1>${escapeHtml(chapter.title)} 题库</h1>
+          <p>${escapeHtml(chapter.summary)}</p>
+          <div class="meta">
+            <span class="pill">${escapeHtml(chapter.tag)}</span>
+            <span class="pill">本章 ${questionBank.length} 题</span>
+            <span class="pill">答错自动进总错题本</span>
+          </div>
+        </div>
+        <div class="hero-image"></div>
+      `;
+      document.getElementById("chapterLink").href = `./chapter.html?chapter=${chapterId}`;
+    }
+
+    function populateSelectors() {
+      chapterSelect.innerHTML = data.chapters.map(item => `<option value="${item.id}" ${item.id === chapterId ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("");
+      const points = ["全部", ...new Set(questionBank.map(question => question.point))];
+      pointFilter.innerHTML = points.map(point => `<option value="${escapeHtml(point)}">${escapeHtml(point)}</option>`).join("");
+    }
+
+    function formatCorrectAnswer(question) {
+      if (question.type === "single" || question.type === "judge") {
+        return `${String.fromCharCode(65 + question.answer)}. ${question.options[question.answer]}`;
+      }
+      if (question.type === "fill") {
+        return question.blanks.join(" / ");
+      }
+      return "";
+    }
+
+    function formatUserAnswer(question, record) {
+      if (question.type === "single" || question.type === "judge") {
+        if (record.selected === undefined) return "未作答";
+        return `${String.fromCharCode(65 + record.selected)}. ${question.options[record.selected]}`;
+      }
+      if (question.type === "fill") {
+        return (record.inputs || []).join(" / ") || "未作答";
+      }
+      return "未作答";
+    }
+
+    function updateWrongBook(question, record) {
+      if (record.result !== false) return;
+      const key = questionKey(question);
+      const previous = wrongBook[key] || { wrongCount: 0 };
+      wrongBook[key] = {
+        key,
+        chapterId,
+        chapterTitle: chapter.title,
+        questionId: question.id,
+        point: question.point,
+        question: question.question,
+        wrongCount: previous.wrongCount + 1,
+        lastWrongAt: new Date().toISOString(),
+        lastWrongAtText: new Date().toLocaleString("zh-CN"),
+        lastUserAnswer: formatUserAnswer(question, record)
+      };
+      saveWrongBook();
+    }
+
+    function visibleQuestions() {
+      return questionBank.filter(question => {
+        const pointOk = pointFilter.value === "全部" || question.point === pointFilter.value;
+        const wrongOk = !showWrongOnly || wrongBook[questionKey(question)];
+        return pointOk && wrongOk;
+      });
+    }
+
+    function feedback(question, record) {
+      if (record.result === undefined) return "";
+      return `
+        <div><strong>正确答案：</strong>${escapeHtml(formatCorrectAnswer(question))}</div>
+        <div><strong>解析：</strong>${escapeHtml(question.explanation)}</div>
+        <div><strong>解题思路：</strong>${escapeHtml(question.thinking)}</div>
+      `;
+    }
+
+    function renderQuestions() {
+      const list = visibleQuestions();
+      questionList.innerHTML = "";
+      if (!list.length) {
+        questionList.innerHTML = `<section class="empty">当前没有可显示的题。你可以切回“全部”，或者先做错几道题再看已记录错题。</section>`;
+        return;
+      }
+      list.forEach((question, index) => {
+        const record = state[question.id] || {};
+        const card = document.createElement("section");
+        card.className = "question-card";
+        card.innerHTML = `
+          <div class="question-head">
+            <span class="tag">${escapeHtml(question.point)}</span>
+            <span class="muted">第 ${index + 1} 题</span>
+          </div>
+          <h2 class="question-title">${escapeHtml(question.question)}</h2>
+          <div class="question-body"></div>
+          <div class="feedback ${record.result === true ? "ok show" : record.result === false ? "bad show" : ""}">
+            <strong>${record.result === true ? "回答正确。" : record.result === false ? "回答不对。" : ""}</strong>
+            <div style="margin-top:6px;">${feedback(question, record)}</div>
+          </div>
+        `;
+        const body = card.querySelector(".question-body");
+        if (question.type === "single" || question.type === "judge") {
+          const wrap = document.createElement("div");
+          wrap.className = "choices";
+          question.options.forEach((option, optionIndex) => {
+            const btn = document.createElement("button");
+            btn.className = "choice-btn";
+            if (record.selected === optionIndex) btn.classList.add("selected");
+            if (record.result !== undefined && optionIndex === question.answer) btn.classList.add("correct");
+            if (record.result === false && record.selected === optionIndex && optionIndex !== question.answer) btn.classList.add("wrong");
+            btn.textContent = `${String.fromCharCode(65 + optionIndex)}. ${option}`;
+            btn.addEventListener("click", () => {
+              const next = { selected: optionIndex, result: optionIndex === question.answer };
+              state[question.id] = next;
+              updateWrongBook(question, next);
+              updateStats();
+              renderQuestions();
+            });
+            wrap.appendChild(btn);
+          });
+          body.appendChild(wrap);
+        }
+        if (question.type === "fill") {
+          const box = document.createElement("div");
+          box.className = "answer-box";
+          box.innerHTML = `
+            ${question.blanks.map((_, i) => `<input type="text" placeholder="第 ${i + 1} 空" value="${escapeHtml(record.inputs?.[i] || "")}" />`).join("")}
+            <button class="btn">提交这一题</button>
+          `;
+          box.querySelector("button").addEventListener("click", () => {
+            const inputs = [...box.querySelectorAll("input")].map(input => input.value.trim());
+            const normalized = inputs.map(value => value.replaceAll(" ", "").toLowerCase());
+            const target = question.blanks.map(value => value.replaceAll(" ", "").toLowerCase());
+            const ok = normalized.length === target.length && normalized.every((value, i) => value === target[i]);
+            const next = { inputs, result: ok };
+            state[question.id] = next;
+            updateWrongBook(question, next);
+            updateStats();
+            renderQuestions();
+          });
+          body.appendChild(box);
+        }
+        questionList.appendChild(card);
+      });
+    }
+
+    function updateStats() {
+      const records = Object.values(state).filter(item => item.result !== undefined);
+      const done = records.length;
+      const correct = records.filter(item => item.result === true).length;
+      const wrong = records.filter(item => item.result === false).length;
+      doneCount.textContent = done;
+      correctCount.textContent = correct;
+      wrongCount.textContent = wrong;
+      accuracyText.textContent = `${done ? Math.round((correct / done) * 100) : 0}%`;
+    }
+
+    function resetForChapter(nextChapterId) {
+      chapterId = nextChapterId;
+      chapter = data.chapters.find(item => item.id === chapterId) || data.chapters[0];
+      questionBank = data.questions[chapterId] || [];
+      Object.keys(state).forEach(key => delete state[key]);
+      showWrongOnly = false;
+      document.getElementById("wrongOnlyBtn").textContent = "只看已记录错题";
+      renderHero();
+      populateSelectors();
+      refreshWrongCounts();
+      updateStats();
+      renderQuestions();
+      history.replaceState(null, "", `./quiz.html?chapter=${chapterId}`);
+    }
+
+    chapterSelect.addEventListener("change", () => resetForChapter(chapterSelect.value));
+    pointFilter.addEventListener("change", renderQuestions);
+    document.getElementById("restartBtn").addEventListener("click", () => {
+      Object.keys(state).forEach(key => delete state[key]);
+      showWrongOnly = false;
+      document.getElementById("wrongOnlyBtn").textContent = "只看已记录错题";
+      updateStats();
+      renderQuestions();
+    });
+    document.getElementById("wrongOnlyBtn").addEventListener("click", () => {
+      showWrongOnly = !showWrongOnly;
+      document.getElementById("wrongOnlyBtn").textContent = showWrongOnly ? "显示全部题" : "只看已记录错题";
+      renderQuestions();
+    });
+
+    renderHero();
+    populateSelectors();
+    refreshWrongCounts();
+    updateStats();
+    renderQuestions();
+  </script>
+</body>
+</html>
